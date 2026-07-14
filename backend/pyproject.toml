@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "autonomous-code-reviewer-backend"
+version = "0.1.0"
+description = "FastAPI + RAG + MCP ready Agentic AI Code Reviewer Backend"
+authors = ["Autonomous Code Reviewer Team"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.110.0"
+uvicorn = {extras = ["standard"], version = "^0.28.0"}
+pydantic-settings = "^2.2.0"
+celery = "^5.3.6"
+redis = "^5.0.3"
+sqlalchemy = "^2.0.28"
+psycopg2-binary = "^2.9.9"
+httpx = "^0.27.0"
+anthropic = "^0.21.0"
+langchain = "^0.1.13"
+langchain-community = "^0.0.29"
+langchain-anthropic = "^0.1.4"
+chromadb = "^0.4.24"
+mcp = "^1.0.0"
+python-multipart = "^0.0.9"
+pyyaml = "^6.0.1"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+gitpython = "^3.1.41"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 88

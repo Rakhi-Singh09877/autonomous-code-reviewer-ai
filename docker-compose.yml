@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reviewer_api
+    ports:
+      - "8000:8000"
+      - "8500:8500" # Expose Model Context Protocol (MCP) port
+    env_file:
+      - ./backend/.env.example
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/code_reviewer
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      - db
+      - redis
+      - chromadb
+    volumes:
+      - ./backend:/workspace
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reviewer_worker
+    command: celery -A app.worker.tasks worker --loglevel=info
+    env_file:
+      - ./backend/.env.example
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/code_reviewer
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    depends_on:
+      - db
+      - redis
+      - chromadb
+    volumes:
+      - ./backend:/workspace
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: reviewer_vector_store
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/data
+
+  db:
+    image: postgres:15-alpine
+    container_name: reviewer_db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=code_reviewer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: reviewer_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
+  chroma_data:
