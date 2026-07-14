@@ -21,6 +21,25 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./chroma_db"
     CHROMA_COLLECTION_NAME: str = "codebase_index"
 
+    # AI Review Agent Config
+    ANTHROPIC_API_KEY: str = ""
+    REVIEW_MODEL: str = "claude-3-5-sonnet-20241022"
+    REVIEW_TEMPERATURE: float = 0.0
+    REVIEW_MAX_TOKENS: int = 4000
+    REVIEW_CONTEXT_WINDOW_LIMIT: int = 180000  # safety limit below 200k
+    REVIEW_MAX_RETRIES: int = 3
+    REVIEW_TIMEOUT_SEC: float = 60.0
+
+    # Token Cost Config (per 1 Million tokens)
+    REVIEW_COST_INPUT_1M: float = 3.0   # $3.00 per M tokens
+    REVIEW_COST_OUTPUT_1M: float = 15.0 # $15.00 per M tokens
+
+    # Prompt Versions
+    PROMPT_VERSION_REVIEW: str = "review_v1"
+    PROMPT_VERSION_SECURITY: str = "security_v1"
+    PROMPT_VERSION_PERFORMANCE: str = "performance_v1"
+    PROMPT_VERSION_DOCUMENTATION: str = "documentation_v1"
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 settings = Settings()
