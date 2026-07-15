@@ -16,6 +16,14 @@ class AnalysisStatusResponse(BaseModel):
     errors: List[str] = Field(default_factory=list, description="A list of warnings or failures logged during analysis.")
 
 class HealthStatusDetail(BaseModel):
-    """Schema returning healthy status checks of all system ports."""
+    """Schema returning healthy status checks of all system ports and runtime telemetry."""
     status: str
     details: Dict[str, str] = Field(..., description="A key-value check of system dependencies (database, llm, rag, loader).")
+    application_version: Optional[str] = Field(None, description="Active application semantic version.")
+    uptime: Optional[float] = Field(None, description="System uptime duration in seconds.")
+    startup_timestamp: Optional[str] = Field(None, description="Application startup timestamp.")
+
+class ReadinessStatusDetail(BaseModel):
+    """Schema returning readiness checks details for operational dependency ports."""
+    status: str
+    details: Dict[str, str] = Field(..., description="Telemetry details for database, llm, rag, and repository loader components.")

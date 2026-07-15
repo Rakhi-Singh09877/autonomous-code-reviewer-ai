@@ -23,6 +23,9 @@ from app.infrastructure.llm.claude import ClaudeLLMAdapter
 
 from app.use_cases.orchestrator import RepositoryAnalysisOrchestrator
 
+from app.use_cases.interfaces.metrics_port import MetricsPort
+from app.infrastructure.registry import services_registry
+
 # Initialize singletons for database connection and Claude API client lifecycle
 _db_adapter = SQLAlchemyDBAdapter()
 _llm_adapter = ClaudeLLMAdapter()
@@ -32,6 +35,9 @@ def get_db_port() -> DBPort:
 
 def get_llm_port() -> LLMPort:
     return _llm_adapter
+
+def get_metrics_port() -> MetricsPort:
+    return services_registry.metrics
 
 def get_loader_port() -> RepositoryLoaderPort:
     return GitLoader(temp_storage_path=settings.TEMP_STORAGE_PATH)
@@ -71,7 +77,8 @@ def get_orchestrator(
     embedding: EmbeddingPort = Depends(get_embedding_port),
     rag: RAGPort = Depends(get_rag_port),
     review_agent: ReviewAgentPort = Depends(get_review_agent_port),
-    report: ReportPort = Depends(get_report_port)
+    report: ReportPort = Depends(get_report_port),
+    metrics: MetricsPort = Depends(get_metrics_port)
 ) -> RepositoryAnalysisOrchestrator:
     return RepositoryAnalysisOrchestrator(
         loader_port=loader,
@@ -80,5 +87,6 @@ def get_orchestrator(
         embedding_port=embedding,
         rag_port=rag,
         review_agent_port=review_agent,
-        report_port=report
+        report_port=report,
+        metrics_port=metrics
     )

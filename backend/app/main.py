@@ -17,6 +17,9 @@ async def lifespan(app: FastAPI):
     """
     FastAPI lifespan context manager enforcing startup and shutdown infrastructure sequences.
     """
+    import time
+    start_time = time.perf_counter()
+
     # 1. Configure logging
     setup_logging()
     logger.info("Centralized logging configured successfully.")
@@ -72,14 +75,20 @@ async def lifespan(app: FastAPI):
             logger.error(f"Claude LLM connection initialization error: {e}")
             raise RuntimeError(f"Claude LLM startup error: {e}") from e
 
-        logger.info("All startup health checks passed. Application is ready to accept requests.")
+        logger.info("All startup health checks passed.")
     else:
         logger.info("Skipping network/adapter health check validations in test environment.")
+
+    startup_duration = (time.perf_counter() - start_time) * 1000.0
+    logger.info("Application startup sequence completed in %.2fms.", startup_duration)
 
     yield
     
     # Graceful shutdown cleanup
     logger.info("Shutting down application...")
+    shutdown_start = time.perf_counter()
+    shutdown_duration = (time.perf_counter() - shutdown_start) * 1000.0
+    logger.info("Application shutdown sequence completed in %.2fms.", shutdown_duration)
 
 app = FastAPI(
     title=settings.APP_NAME,

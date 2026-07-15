@@ -39,3 +39,10 @@ node_modules/
 
 # Docker
 *.pid
+
+# Runtime storage
+chroma_db/
+storage/
+*.sqlite
+*.sqlite3
+*.db

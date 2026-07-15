@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     LOG_FILE_PATH: str = "./storage/logs/app.log"
     LOG_FORMAT: str = "json"  # "json" or "plain"
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
+    APP_VERSION: str = "1.0.0"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 

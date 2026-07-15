@@ -20,6 +20,8 @@ from app.use_cases.interfaces.rag_port import RAGPort
 from app.use_cases.interfaces.agent_ports import ReviewAgentPort
 from app.use_cases.interfaces.report_port import ReportPort
 
+from app.use_cases.interfaces.metrics_port import MetricsPort
+
 logger = logging.getLogger("app.use_cases.orchestrator")
 
 class RepositoryAnalysisOrchestrator:
@@ -36,7 +38,8 @@ class RepositoryAnalysisOrchestrator:
         embedding_port: EmbeddingPort,
         rag_port: RAGPort,
         review_agent_port: ReviewAgentPort,
-        report_port: ReportPort
+        report_port: ReportPort,
+        metrics_port: Optional[MetricsPort] = None
     ) -> None:
         self.loader_port = loader_port
         self.detector_port = detector_port
@@ -45,6 +48,7 @@ class RepositoryAnalysisOrchestrator:
         self.rag_port = rag_port
         self.review_agent_port = review_agent_port
         self.report_port = report_port
+        self.metrics_port = metrics_port
 
     async def analyze_repository(
         self,
@@ -57,6 +61,9 @@ class RepositoryAnalysisOrchestrator:
         """
         Coordinates the complete repository code review analysis workflow.
         """
+        if self.metrics_port:
+            self.metrics_port.record_analysis_started()
+
         if policy is None:
             policy = ReviewPolicy()
 
@@ -289,9 +296,14 @@ class RepositoryAnalysisOrchestrator:
             if progress_callback:
                 await progress_callback("COMPLETED", 100.0, "Report complete", None, len(file_paths))
 
+            if self.metrics_port:
+                self.metrics_port.record_analysis_completed()
+
             return report
 
         except Exception as e:
+            if self.metrics_port:
+                self.metrics_port.record_analysis_failed()
             if progress_callback:
                 num_files = len(file_paths) if 'file_paths' in locals() else 0
                 await progress_callback("FAILED", 100.0, "Analysis failed", str(e), num_files)

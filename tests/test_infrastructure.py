@@ -21,6 +21,7 @@ from app.infrastructure.api.errors import register_exception_handlers, ErrorResp
 from app.infrastructure.database.repository import SQLAlchemyDBAdapter
 from app.domain.exceptions.agent_exceptions import LLMRateLimitException
 from app.domain.exceptions.repository_exceptions import InvalidRepositoryURLException
+from app.infrastructure.api.dependencies import get_db_port, get_llm_port, get_rag_port, get_loader_port
 from app.main import lifespan
 
 def test_json_formatter_formatting():
@@ -299,3 +300,161 @@ def test_custom_validation_error_response():
     assert data["error_code"] == "VALIDATION_ERROR"
     assert "Request validation failed" in data["message"]
     assert "body.price" in data["message"]
+
+# ==========================================
+# Phase 3 Observability Tests
+# ==========================================
+
+def test_liveness_probe():
+    from app.main import app
+    client = TestClient(app)
+    res = client.get("/api/v1/live")
+    assert res.status_code == 200
+    assert res.json() == {"status": "alive"}
+
+def test_readiness_probe_success():
+    from app.main import app
+    
+    mock_db = MagicMock()
+    mock_db.check_health = AsyncMock(return_value=True)
+    mock_llm = MagicMock()
+    mock_llm.check_health = AsyncMock(return_value=True)
+    mock_rag = MagicMock()
+    mock_rag.check_health = AsyncMock(return_value=True)
+    mock_loader = MagicMock()
+    mock_loader.check_health = MagicMock(return_value=True)
+
+    app.dependency_overrides[get_db_port] = lambda: mock_db
+    app.dependency_overrides[get_llm_port] = lambda: mock_llm
+    app.dependency_overrides[get_rag_port] = lambda: mock_rag
+    app.dependency_overrides[get_loader_port] = lambda: mock_loader
+    
+    try:
+        client = TestClient(app)
+        res = client.get("/api/v1/ready")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ready"
+        assert data["details"]["database"] == "healthy"
+    finally:
+        app.dependency_overrides.clear()
+
+def test_readiness_probe_failure_logging(caplog):
+    from app.main import app
+    
+    mock_db = MagicMock()
+    mock_db.check_health = AsyncMock(return_value=True)
+    mock_llm = MagicMock()
+    mock_llm.check_health = AsyncMock(return_value=True)
+    mock_rag = MagicMock()
+    mock_rag.check_health = AsyncMock(return_value=False)
+    mock_loader = MagicMock()
+    mock_loader.check_health = MagicMock(return_value=True)
+
+    app.dependency_overrides[get_db_port] = lambda: mock_db
+    app.dependency_overrides[get_llm_port] = lambda: mock_llm
+    app.dependency_overrides[get_rag_port] = lambda: mock_rag
+    app.dependency_overrides[get_loader_port] = lambda: mock_loader
+    
+    try:
+        with caplog.at_level(logging.ERROR):
+            client = TestClient(app)
+            res = client.get("/api/v1/ready")
+            assert res.status_code == 503
+            data = res.json()
+            assert data["status"] == "not_ready"
+            assert data["details"]["rag"] == "unhealthy"
+            
+            error_logs = [r.message for r in caplog.records if "Readiness check failed" in r.message]
+            assert len(error_logs) == 1
+            assert "rag" in error_logs[0]
+    finally:
+        app.dependency_overrides.clear()
+
+def test_metrics_endpoint_content_type_and_histogram_labeled_export():
+    from app.main import app
+    client = TestClient(app)
+    
+    client.get("/api/v1/live")
+    
+    res = client.get("/api/v1/metrics")
+    assert res.status_code == 200
+    assert "text/plain; version=0.0.4" in res.headers["content-type"]
+    
+    content = res.text
+    assert "http_requests_total" in content
+    assert 'method="GET"' in content
+    assert 'path="/api/v1/live"' in content
+    assert 'status="200"' in content
+    
+    assert "http_request_duration_seconds_bucket" in content
+    assert "http_request_duration_seconds_sum" in content
+    assert "http_request_duration_seconds_count" in content
+
+def test_concurrent_request_accounting():
+    from app.infrastructure.registry import services_registry
+    metrics = services_registry.metrics
+    
+    initial_active = metrics._active_requests._value.get()
+    
+    metrics.record_request_started()
+    metrics.record_request_started()
+    metrics.record_request_started()
+    assert metrics._active_requests._value.get() == initial_active + 3
+    
+    metrics.record_request_completed("GET", "/concurrent-test", 200, 0.05)
+    assert metrics._active_requests._value.get() == initial_active + 2
+    
+    metrics.record_request_completed("GET", "/concurrent-test", 200, 0.05)
+    metrics.record_request_completed("GET", "/concurrent-test", 200, 0.05)
+    assert metrics._active_requests._value.get() == initial_active
+
+def test_active_request_gauge_decrement_after_exceptions():
+    from app.infrastructure.registry import services_registry
+    metrics = services_registry.metrics
+    initial_active = metrics._active_requests._value.get()
+    
+    app = FastAPI()
+    app.add_middleware(RequestTimingAndLoggingMiddleware)
+    
+    @app.get("/error-path")
+    async def error_path():
+        raise RuntimeError("Testing exceptions decrement")
+        
+    client = TestClient(app, raise_server_exceptions=False)
+    client.get("/error-path")
+    
+    assert metrics._active_requests._value.get() == initial_active
+
+@patch("app.infrastructure.api.v1.endpoints.status.get_system_health_status")
+def test_shared_health_check_implementation_usage(mock_health):
+    mock_health.return_value = {
+        "all_healthy": True,
+        "details": {"database": "healthy", "llm": "healthy", "rag": "healthy", "repository_loader": "healthy"}
+    }
+    
+    from app.main import app
+    app.dependency_overrides.clear()
+    
+    client = TestClient(app)
+    
+    res1 = client.get("/api/v1/health")
+    assert res1.status_code == 200
+    
+    res2 = client.get("/api/v1/ready")
+    assert res2.status_code == 200
+    
+    assert mock_health.call_count == 2
+
+def test_health_check_extended_payload():
+    from app.main import app
+    client = TestClient(app)
+    
+    res = client.get("/api/v1/health")
+    assert res.status_code == 200 or res.status_code == 503
+    data = res.json()
+    assert "application_version" in data
+    assert "uptime" in data
+    assert "startup_timestamp" in data
+    assert data["application_version"] == "1.0.0"
+    assert data["uptime"] >= 0
