@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
 
 class Settings(BaseSettings):
     APP_NAME: str = "Autonomous Code Reviewer AI"
@@ -20,6 +21,8 @@ class Settings(BaseSettings):
     RAG_BATCH_SIZE: int = 100
     RAG_REQUEST_TIMEOUT: float = 30.0
     RAG_MAX_RETRIES: int = 3
+    CHROMA_HOST: Optional[str] = None
+    CHROMA_PORT: int = 8000
     CHROMA_PERSIST_DIR: str = "./chroma_db"
     CHROMA_COLLECTION_NAME: str = "codebase_index"
 

@@ -1,0 +1,12 @@
+__pycache__
+.pytest_cache
+.git
+.venv
+reports
+temp
+node_modules
+dist
+build
+*.pyc
+*.db
+*.log

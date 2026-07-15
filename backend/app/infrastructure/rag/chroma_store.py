@@ -24,13 +24,19 @@ class ChromaVectorStore(EmbeddingPort):
         self.provider = embedding_provider
         self.persist_dir = persist_dir or settings.CHROMA_PERSIST_DIR
         
-        # Initialize persistent ChromaDB client
-        self.client = chromadb.PersistentClient(path=self.persist_dir)
+        if settings.CHROMA_HOST:
+            # Connect via HTTP to the standalone ChromaDB server container
+            self.client = chromadb.HttpClient(host=settings.CHROMA_HOST, port=int(settings.CHROMA_PORT))
+            logger.info("ChromaDB initialized as HTTP client connecting to %s:%s", settings.CHROMA_HOST, settings.CHROMA_PORT)
+        else:
+            # Initialize persistent local ChromaDB client for fallback/testing
+            self.client = chromadb.PersistentClient(path=self.persist_dir)
+            logger.info("ChromaDB initialized as PersistentClient at: %s", self.persist_dir)
+            
         self.collection = self.client.get_or_create_collection(
             name=settings.CHROMA_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"}
         )
-        logger.info(f"ChromaDB initialized at: {self.persist_dir}")
 
     def upsert_documents(self, repository_id: str, documents: List[EmbeddingDocument]) -> EmbeddingResult:
         if not documents:
