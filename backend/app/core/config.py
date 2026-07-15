@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = "replace-this-with-a-secure-random-secret-key-in-production"
+    OPENAI_API_KEY: str = ""
+    DATABASE_URL: str = "sqlite:///./code_reviewer.db"
     
     # Storage and Loader Config
     TEMP_STORAGE_PATH: str = "./storage/temp"

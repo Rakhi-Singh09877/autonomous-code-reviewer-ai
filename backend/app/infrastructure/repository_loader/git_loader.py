@@ -77,13 +77,23 @@ class GitLoader(RepositoryLoaderPort):
 
         file_count, total_size = self._get_workspace_metrics(local_path)
 
+        # Retrieve active branch name from the cloned repo if not specified
+        resolved_branch = branch
+        if not resolved_branch:
+            try:
+                git_repo = git.Repo(str(local_path))
+                resolved_branch = git_repo.active_branch.name
+            except Exception as e:
+                logger.warning("Failed to determine Git active branch: %s", e)
+                resolved_branch = "main"
+
         return Repository(
             id=workspace_id,
             local_path=local_path,
             source_type=RepositorySourceType.GIT,
             file_count=file_count,
             total_size_bytes=total_size,
-            branch=branch,
+            branch=resolved_branch,
             git_url=url,
         )
 
@@ -126,6 +136,7 @@ class GitLoader(RepositoryLoaderPort):
             source_type=RepositorySourceType.ZIP,
             file_count=file_count,
             total_size_bytes=total_size,
+            branch="main",
         )
 
     def cleanup(self, repository: Repository) -> None:
@@ -133,6 +144,20 @@ class GitLoader(RepositoryLoaderPort):
         Safely removes the directory associated with the Repository.
         """
         self._cleanup_path(repository.local_path)
+
+    def check_health(self) -> bool:
+        """
+        Verifies that the temp directory exists and is writable.
+        """
+        try:
+            self.temp_storage_path.mkdir(parents=True, exist_ok=True)
+            test_file = self.temp_storage_path / f"health_check_{uuid.uuid4()}.tmp"
+            test_file.write_text("ok", encoding="utf-8")
+            test_file.unlink()
+            return True
+        except Exception as e:
+            logger.warning("Repository loader health check failed: %s", e)
+            return False
 
     def _cleanup_path(self, path: Path) -> None:
         """Helper method to remove file tree recursively."""

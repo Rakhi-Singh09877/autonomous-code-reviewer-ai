@@ -26,3 +26,10 @@ class RepositoryLoaderPort(ABC):
         Removes the local directory workspace associated with the given Repository.
         """
         pass
+
+    @abstractmethod
+    def check_health(self) -> bool:
+        """
+        Verifies that the repository loader workspace is accessible and functional.
+        """
+        pass

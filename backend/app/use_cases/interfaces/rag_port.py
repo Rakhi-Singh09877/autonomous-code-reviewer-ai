@@ -11,9 +11,17 @@ class RAGPort(ABC):
         self,
         repository_id: str,
         query: str,
-        limit: int = 5
+        limit: int = 5,
+        branch: str = "main"
     ) -> List[SearchResult]:
         """
         Retrieves matching code chunks from the knowledge base using similarity search.
+        """
+        pass
+
+    @abstractmethod
+    async def check_health(self) -> bool:
+        """
+        Verifies vector database and RAG connection health status.
         """
         pass
