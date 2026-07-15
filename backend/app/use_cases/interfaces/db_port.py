@@ -7,6 +7,11 @@ class DBPort(ABC):
     Interface Port defining database operations for review run analysis tracking and health checks.
     """
     @abstractmethod
+    async def initialize(self) -> None:
+        """Initializes database schemas and maps metadata tables."""
+        pass
+
+    @abstractmethod
     async def create_analysis(self, analysis_id: str, repository_id: Optional[str] = None) -> None:
         """Initializes a new analysis state inside the database."""
         pass

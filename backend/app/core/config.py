@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION_NAME: str = "codebase_index"
 
     # AI Review Agent Config
+    LLM_PROVIDER: str = "anthropic"  # "anthropic", "openai", "local"
     ANTHROPIC_API_KEY: str = ""
     REVIEW_MODEL: str = "claude-3-5-sonnet-20241022"
     REVIEW_TEMPERATURE: float = 0.0
@@ -45,6 +46,36 @@ class Settings(BaseSettings):
     PROMPT_VERSION_PERFORMANCE: str = "performance_v1"
     PROMPT_VERSION_DOCUMENTATION: str = "documentation_v1"
 
+    # Production Infrastructure / Logging Settings
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE_PATH: str = "./storage/logs/app.log"
+    LOG_FORMAT: str = "json"  # "json" or "plain"
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
+
+    def validate_config(self, force: bool = False) -> None:
+        """
+        Validates the configuration settings based on active provider selections.
+        Fails fast by raising ValueError during startup if configurations are invalid.
+        """
+        import sys
+        if not force and ("pytest" in sys.modules or self.APP_ENV == "test"):
+            # Skip checking API keys during unit tests
+            return
+
+        errors = []
+        if self.LLM_PROVIDER == "anthropic":
+            if not self.ANTHROPIC_API_KEY:
+                errors.append("ANTHROPIC_API_KEY is required when LLM_PROVIDER is 'anthropic'.")
+        elif self.LLM_PROVIDER == "openai":
+            if not self.OPENAI_API_KEY:
+                errors.append("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'.")
+
+        if self.EMBEDDING_PROVIDER == "openai":
+            if not self.OPENAI_API_KEY:
+                errors.append("OPENAI_API_KEY is required when EMBEDDING_PROVIDER is 'openai'.")
+
+        if errors:
+            raise ValueError("Configuration validation failed:\n" + "\n".join(errors))
 
 settings = Settings()

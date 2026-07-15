@@ -27,10 +27,14 @@ class SQLAlchemyDBAdapter(DBPort):
             
         self.engine = create_engine(self.url, connect_args=connect_args)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        
-        # Create metadata tables
-        Base.metadata.create_all(bind=self.engine)
-        logger.info(f"Database tables initialized for url: {self.url}")
+
+    async def initialize(self) -> None:
+        """
+        Initializes the database schema and creates all tables.
+        """
+        import asyncio
+        await asyncio.to_thread(Base.metadata.create_all, bind=self.engine)
+        logger.info("Database tables initialized for url: %s", self.url)
 
     def _get_session(self) -> Session:
         return self.SessionLocal()
