@@ -1,11 +1,15 @@
 import sys
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging import setup_logging, logger
 from app.infrastructure.api.dependencies import get_db_port, get_llm_port, get_rag_port
 from app.infrastructure.api.middleware.request_id import RequestIDMiddleware
+from app.infrastructure.api.middleware.security import SecurityHeadersMiddleware
+from app.infrastructure.api.middleware.logging_middleware import RequestTimingAndLoggingMiddleware
+from app.infrastructure.api.errors import register_exception_handlers
 from app.infrastructure.api.v1.router import api_router
 
 @asynccontextmanager
@@ -87,8 +91,26 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Register Request ID Middleware to inject trace context
+# 1. Register CORS Middleware with multi-origin config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 2. Register Security Headers Middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 3. Register Request Timing and Logging Middleware
+app.add_middleware(RequestTimingAndLoggingMiddleware)
+
+# 4. Register Request ID Middleware to inject trace context (outermost)
 app.add_middleware(RequestIDMiddleware)
+
+# Register custom exception and domain mappings handlers
+register_exception_handlers(app)
 
 # Register the aggregated APIRouter with default API prefix (/api/v1)
 app.include_router(api_router, prefix=settings.API_V1_STR)
