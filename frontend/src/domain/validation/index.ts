@@ -1,4 +1,4 @@
-export const gitUrlRegex = /^(https:\/\/|git@)([a-zA-Z0-9.-]+)(:[0-9]+)?(\/[a-zA-Z0-9_.-]+)+(\.git)?$/;
+export const gitUrlRegex = /^(https:\/\/|git@)([a-zA-Z0-9.-]+)([:/][a-zA-Z0-9_.-]+)+(\.git)?$/;
 
 export function validateGitUrl(url: string): boolean {
   return gitUrlRegex.test(url);

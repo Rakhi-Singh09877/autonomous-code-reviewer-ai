@@ -1,4 +1,3 @@
-import { Repository } from "../entities/repository.entity";
 import { Analysis } from "../entities/analysis.entity";
 import { RepositoryReviewReport } from "../entities/report.entity";
 import { User } from "../entities/user.entity";
@@ -17,7 +16,7 @@ export interface IAuthPort {
 
 export interface SystemEvent {
   type: "ANALYSIS_PROGRESS" | "WORKER_STATUS_CHANGED" | "NEW_REPORT_ALERT";
-  payload: any;
+  payload: unknown;
   timestamp: string;
 }
 
