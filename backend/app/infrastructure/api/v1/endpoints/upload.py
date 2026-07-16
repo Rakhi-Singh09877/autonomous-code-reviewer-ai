@@ -2,100 +2,31 @@ import uuid
 import logging
 import zipfile
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, Depends, File, UploadFile, Form, BackgroundTasks, HTTPException
+from typing import Optional, List
+from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException
 
 from app.core.config import settings
-from app.use_cases.orchestrator import RepositoryAnalysisOrchestrator
 from app.use_cases.interfaces.db_port import DBPort
-from app.domain.models.analysis import ReviewPolicy
-from app.infrastructure.api.dependencies import get_orchestrator, get_db_port
+from app.use_cases.interfaces.job_queue_port import JobQueuePort
+from app.infrastructure.api.dependencies import get_db_port, get_job_queue
 from app.infrastructure.api.schemas.analysis import AnalysisInitiateResponse
 
 logger = logging.getLogger("app.infrastructure.api.endpoints.upload")
 router = APIRouter()
 
-async def run_analysis_background(
-    analysis_id: str,
-    orchestrator: RepositoryAnalysisOrchestrator,
-    db_port: DBPort,
-    git_url: Optional[str] = None,
-    zip_path: Optional[str] = None,
-    branch: Optional[str] = None,
-    policy: Optional[ReviewPolicy] = None
-) -> None:
-    """
-    Background worker function updating analysis runs state in DB and cleaning up zip resources.
-    """
-    async def progress_callback(
-        status: str,
-        progress: float,
-        current_file: Optional[str],
-        error: Optional[str],
-        total_files: Optional[int] = None
-    ):
-        await db_port.update_analysis_progress(
-            analysis_id=analysis_id,
-            status=status,
-            progress_percentage=progress,
-            current_file=current_file,
-            error=error,
-            total_files=total_files
-        )
-
-    zip_file = None
-    try:
-        if zip_path:
-            zip_file = open(zip_path, "rb")
-        
-        report = await orchestrator.analyze_repository(
-            git_url=git_url,
-            zip_file=zip_file,
-            branch=branch,
-            policy=policy,
-            progress_callback=progress_callback
-        )
-        
-        # Save completed report and update state to COMPLETED
-        await db_port.save_analysis_report(analysis_id, report)
-        logger.info("Background analysis completed successfully for run: %s", analysis_id)
-        
-    except Exception as e:
-        logger.error("Error executing background analysis run %s: %s", analysis_id, e, exc_info=True)
-        await db_port.update_analysis_progress(
-            analysis_id=analysis_id,
-            status="FAILED",
-            progress_percentage=100.0,
-            error=str(e)
-        )
-    finally:
-        if zip_file:
-            try:
-                zip_file.close()
-            except Exception as e:
-                logger.error("Failed to close ZIP file: %s", e)
-        if zip_path:
-            try:
-                p = Path(zip_path)
-                if p.exists():
-                    p.unlink()
-                    logger.info("Temporary uploaded zip file cleaned up: %s", zip_path)
-            except Exception as e:
-                logger.error("Failed to clean up temporary ZIP file %s: %s", zip_path, e)
-
 @router.post("/analyze", response_model=AnalysisInitiateResponse, status_code=202)
 async def analyze_repository(
-    background_tasks: BackgroundTasks,
     git_url: Optional[str] = Form(None),
     branch: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     focus_areas: Optional[str] = Form(None),  # Comma-separated list
     max_issues_per_file: Optional[int] = Form(None),
-    orchestrator: RepositoryAnalysisOrchestrator = Depends(get_orchestrator),
+    queue: JobQueuePort = Depends(get_job_queue),
     db_port: DBPort = Depends(get_db_port)
 ):
     """
     Initiates asynchronous code review analysis for a Git URL or uploaded ZIP file.
+    Queues tasks onto the persistent distributed task broker queue.
     """
     # 1. Input validations
     if not git_url and not file:
@@ -157,10 +88,7 @@ async def analyze_repository(
 
     # Parse review policy fields
     policy_focus = [f.strip() for f in focus_areas.split(",")] if focus_areas else []
-    policy = ReviewPolicy(
-        focus_areas=policy_focus,
-        max_issues_per_file=max_issues_per_file if max_issues_per_file is not None else 15
-    )
+    max_issues = max_issues_per_file if max_issues_per_file is not None else 15
 
     analysis_id = str(uuid.uuid4())
     
@@ -176,16 +104,21 @@ async def analyze_repository(
             detail="Failed to initialize analysis job."
         )
 
-    # 2. Add background task execution
-    background_tasks.add_task(
-        run_analysis_background,
-        analysis_id=analysis_id,
-        orchestrator=orchestrator,
-        db_port=db_port,
-        git_url=git_url,
-        zip_path=zip_disk_path,
-        branch=branch,
-        policy=policy
-    )
+    # Enqueue analysis task in queue
+    try:
+        queue.enqueue_analysis(
+            analysis_id=analysis_id,
+            git_url=git_url,
+            zip_path=zip_disk_path,
+            branch=branch,
+            focus_areas=policy_focus,
+            max_issues_per_file=max_issues
+        )
+    except Exception as e:
+        logger.error("Failed to enqueue analysis task into queue: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to queue analysis task: {e}"
+        )
 
     return AnalysisInitiateResponse(analysis_id=analysis_id, status="PENDING")

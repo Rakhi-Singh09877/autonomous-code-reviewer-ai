@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
     APP_VERSION: str = "1.0.0"
 
+    # Celery & Redis task settings
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    CELERY_MAX_RETRIES: int = 3
+    CELERY_RETRY_DELAY: int = 5
+    CELERY_RETRY_BACKOFF: bool = True
+    JOB_TIMEOUT_SECONDS: int = 1800
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
     def validate_config(self, force: bool = False) -> None:

@@ -1,92 +1,79 @@
 from fastapi import Depends
 from app.core.config import settings
+
+# Import Ports
+from app.use_cases.interfaces.db_port import DBPort
+from app.use_cases.interfaces.llm_port import LLMPort
+from app.use_cases.interfaces.metrics_port import MetricsPort
 from app.use_cases.interfaces.loader_port import RepositoryLoaderPort
 from app.use_cases.interfaces.detector_port import LanguageDetectorPort
 from app.use_cases.interfaces.parser_port import CodeParserPort
-from app.use_cases.interfaces.embedding_port import EmbeddingPort, EmbeddingProvider
+from app.use_cases.interfaces.embedding_port import EmbeddingPort
 from app.use_cases.interfaces.rag_port import RAGPort
 from app.use_cases.interfaces.agent_ports import ReviewAgentPort
 from app.use_cases.interfaces.report_port import ReportPort
-from app.use_cases.interfaces.db_port import DBPort
-from app.use_cases.interfaces.llm_port import LLMPort
+from app.use_cases.interfaces.job_queue_port import JobQueuePort
 
-from app.infrastructure.repository_loader.git_loader import GitLoader
-from app.infrastructure.language_detector.detector import DefaultLanguageDetector
-from app.infrastructure.code_parser.parser import DefaultCodeParser
-from app.infrastructure.rag.chroma_store import ChromaVectorStore
-from app.infrastructure.rag.embedding_provider import OpenAIEmbeddingProvider
-from app.infrastructure.rag.rag_engine import RAGEngine
-from app.infrastructure.agents.review_agent import ReviewAgent
-from app.infrastructure.report.generator import MarkdownReportGenerator
-from app.infrastructure.database.repository import SQLAlchemyDBAdapter
-from app.infrastructure.llm.claude import ClaudeLLMAdapter
-
+# Import Composition Root and Celery Adapter
+from app.core.factory import ServiceFactory
+from app.infrastructure.queue.celery_adapter import CeleryJobQueueAdapter
 from app.use_cases.orchestrator import RepositoryAnalysisOrchestrator
 
-from app.use_cases.interfaces.metrics_port import MetricsPort
-from app.infrastructure.registry import services_registry
-
-# Initialize singletons for database connection and Claude API client lifecycle
-_db_adapter = SQLAlchemyDBAdapter()
-_llm_adapter = ClaudeLLMAdapter()
+# Initialize the queue adapter instance as singleton
+_job_queue = CeleryJobQueueAdapter()
 
 def get_db_port() -> DBPort:
-    return _db_adapter
+    """
+    Resolves db port singleton from composition root.
+    """
+    return ServiceFactory.get_db_port()
 
 def get_llm_port() -> LLMPort:
-    return _llm_adapter
+    """
+    Resolves LLM port singleton from composition root.
+    """
+    return ServiceFactory.get_llm_port()
 
 def get_metrics_port() -> MetricsPort:
-    return services_registry.metrics
+    """
+    Resolves MetricsPort singleton from composition root.
+    """
+    return ServiceFactory.get_metrics_port()
+
+def get_job_queue() -> JobQueuePort:
+    """
+    Resolves the JobQueuePort messaging adapter singleton.
+    """
+    return _job_queue
 
 def get_loader_port() -> RepositoryLoaderPort:
-    return GitLoader(temp_storage_path=settings.TEMP_STORAGE_PATH)
+    return ServiceFactory.get_loader_port()
 
 def get_detector_port() -> LanguageDetectorPort:
-    return DefaultLanguageDetector()
+    return ServiceFactory.get_detector_port()
 
 def get_parser_port() -> CodeParserPort:
-    return DefaultCodeParser()
-
-def get_embedding_provider() -> EmbeddingProvider:
-    return OpenAIEmbeddingProvider(api_key=settings.OPENAI_API_KEY, dimensions=settings.EMBEDDING_DIMENSIONS)
+    return ServiceFactory.get_parser_port()
 
 def get_embedding_port(
-    provider: EmbeddingProvider = Depends(get_embedding_provider)
+    provider = Depends(ServiceFactory.get_embedding_port)
 ) -> EmbeddingPort:
-    return ChromaVectorStore(embedding_provider=provider)
+    return provider
 
 def get_rag_port(
-    store: EmbeddingPort = Depends(get_embedding_port),
-    provider: EmbeddingProvider = Depends(get_embedding_provider)
+    rag = Depends(ServiceFactory.get_rag_port)
 ) -> RAGPort:
-    return RAGEngine(vector_store=store, embedding_provider=provider)
+    return rag
 
 def get_review_agent_port(
     llm: LLMPort = Depends(get_llm_port)
 ) -> ReviewAgentPort:
-    return ReviewAgent(llm_port=llm)
+    return ServiceFactory.get_review_agent_port()
 
 def get_report_port() -> ReportPort:
-    return MarkdownReportGenerator()
+    return ServiceFactory.get_report_port()
 
 def get_orchestrator(
-    loader: RepositoryLoaderPort = Depends(get_loader_port),
-    detector: LanguageDetectorPort = Depends(get_detector_port),
-    parser: CodeParserPort = Depends(get_parser_port),
-    embedding: EmbeddingPort = Depends(get_embedding_port),
-    rag: RAGPort = Depends(get_rag_port),
-    review_agent: ReviewAgentPort = Depends(get_review_agent_port),
-    report: ReportPort = Depends(get_report_port),
-    metrics: MetricsPort = Depends(get_metrics_port)
+    orchestrator: RepositoryAnalysisOrchestrator = Depends(ServiceFactory.get_orchestrator)
 ) -> RepositoryAnalysisOrchestrator:
-    return RepositoryAnalysisOrchestrator(
-        loader_port=loader,
-        detector_port=detector,
-        parser_port=parser,
-        embedding_port=embedding,
-        rag_port=rag,
-        review_agent_port=review_agent,
-        report_port=report,
-        metrics_port=metrics
-    )
+    return orchestrator

@@ -14,10 +14,41 @@ services:
       - DATABASE_URL=sqlite:///./storage/code_reviewer.db
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       - chromadb
+      - redis
     volumes:
       - backend_storage:/app/storage
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: reviewer_worker
+    command: celery -A app.infrastructure.queue.celery_tasks.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:///./storage/code_reviewer.db
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - chromadb
+      - redis
+    volumes:
+      - backend_storage:/app/storage
+
+  redis:
+    image: redis:7-alpine
+    container_name: reviewer_redis
+    ports:
+      - "6379:6379"
 
   chromadb:
     image: chromadb/chroma:latest

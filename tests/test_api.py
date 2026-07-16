@@ -12,7 +12,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 from app.main import app
-from app.infrastructure.api.dependencies import get_orchestrator, get_db_port, get_llm_port, get_rag_port, get_loader_port
+from app.infrastructure.api.dependencies import get_orchestrator, get_db_port, get_llm_port, get_rag_port, get_loader_port, get_job_queue
+from app.use_cases.interfaces.job_queue_port import JobQueuePort
 from app.use_cases.orchestrator import RepositoryAnalysisOrchestrator
 from app.use_cases.interfaces.db_port import DBPort
 from app.use_cases.interfaces.llm_port import LLMPort
@@ -52,12 +53,17 @@ def mock_loader():
     return loader
 
 @pytest.fixture
-def client(mock_db, mock_orchestrator, mock_llm, mock_rag, mock_loader):
+def mock_queue():
+    return MagicMock(spec=JobQueuePort)
+
+@pytest.fixture
+def client(mock_db, mock_orchestrator, mock_llm, mock_rag, mock_loader, mock_queue):
     app.dependency_overrides[get_db_port] = lambda: mock_db
     app.dependency_overrides[get_orchestrator] = lambda: mock_orchestrator
     app.dependency_overrides[get_llm_port] = lambda: mock_llm
     app.dependency_overrides[get_rag_port] = lambda: mock_rag
     app.dependency_overrides[get_loader_port] = lambda: mock_loader
+    app.dependency_overrides[get_job_queue] = lambda: mock_queue
     
     with TestClient(app) as test_client:
         yield test_client

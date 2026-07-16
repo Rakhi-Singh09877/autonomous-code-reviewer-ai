@@ -58,6 +58,23 @@ class PrometheusMetricsAdapter(MetricsPort):
             []
         )
 
+        # 3. Celery queue and worker metrics
+        self._queue_waiting_duration = get_or_register_histogram(
+            "celery_queue_waiting_duration_seconds",
+            "Latency of task waiting in the Redis queue before execution.",
+            []
+        )
+        self._worker_execution_duration = get_or_register_histogram(
+            "celery_worker_execution_duration_seconds",
+            "Total execution latency of worker tasks.",
+            []
+        )
+        self._task_retries = get_or_register_counter(
+            "celery_task_retries_total",
+            "Total number of task retries.",
+            ["attempt"]
+        )
+
     def record_request_started(self) -> None:
         self._active_requests.inc()
 
@@ -74,6 +91,15 @@ class PrometheusMetricsAdapter(MetricsPort):
 
     def record_analysis_failed(self) -> None:
         self._jobs_failed.inc()
+
+    def record_queue_waiting_time(self, latency_seconds: float) -> None:
+        self._queue_waiting_duration.observe(latency_seconds)
+
+    def record_worker_execution_duration(self, duration_seconds: float) -> None:
+        self._worker_execution_duration.observe(duration_seconds)
+
+    def record_task_retry(self, attempt: int) -> None:
+        self._task_retries.labels(attempt=str(attempt)).inc()
 
     def generate_prometheus_metrics(self) -> str:
         """
