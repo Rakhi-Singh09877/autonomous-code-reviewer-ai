@@ -71,7 +71,7 @@ services:
       - backend
     environment:
       - NODE_ENV=production
-      - API_URL=http://backend:8000/api/v1
+      - BACKEND_API_URL=http://backend:8000
       - NEXT_PUBLIC_BFF_URL=http://localhost:3000/api
 
 volumes:
