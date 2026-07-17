@@ -6,6 +6,7 @@ import sys
 import json
 from pathlib import Path
 from fastapi.testclient import TestClient
+from fastapi.websockets import WebSocketDisconnect
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
 
@@ -340,6 +341,129 @@ def test_sse_disconnect_cleanup(client, mock_db):
     assert first_line.startswith("data: ")
     # Close connection (simulates disconnect)
     response.close()
+
+def test_ws_missing_analysis_id(client):
+    with client.websocket_connect("/api/v1/events/ws") as websocket:
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            websocket.receive_text()
+        assert exc_info.value.code == 1008
+
+def test_ws_invalid_uuid(client):
+    with client.websocket_connect("/api/v1/events/ws?analysis_id=invalid-uuid") as websocket:
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            websocket.receive_text()
+        assert exc_info.value.code == 1008
+
+def test_ws_unknown_analysis(client, mock_db):
+    mock_db.get_analysis_state.return_value = None
+    unknown_id = str(uuid.uuid4())
+    with client.websocket_connect(f"/api/v1/events/ws?analysis_id={unknown_id}") as websocket:
+        with pytest.raises(WebSocketDisconnect) as exc_info:
+            websocket.receive_text()
+        assert exc_info.value.code == 1008
+
+def test_ws_successful_connection_and_updates(client, mock_db):
+    analysis_id = str(uuid.uuid4())
+    # 1 state check for validation, plus states for loop
+    states = [
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PENDING",
+            "progress_percentage": 0.0,
+            "current_file": None,
+            "total_files": 0,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PENDING",
+            "progress_percentage": 0.0,
+            "current_file": None,
+            "total_files": 0,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 50.0,
+            "current_file": "main.py",
+            "total_files": 2,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "COMPLETED",
+            "progress_percentage": 100.0,
+            "current_file": "done.py",
+            "total_files": 2,
+            "errors": []
+        }
+    ]
+    mock_db.get_analysis_state.side_effect = states
+    
+    with client.websocket_connect(f"/api/v1/events/ws?analysis_id={analysis_id}") as websocket:
+        # Receive first update (PENDING)
+        msg1 = websocket.receive_json()
+        assert msg1["payload"]["status"] == "PENDING"
+        
+        # Receive second update (PROCESSING)
+        msg2 = websocket.receive_json()
+        assert msg2["payload"]["status"] == "PROCESSING"
+        assert msg2["payload"]["progress_percentage"] == 50.0
+        
+        # Receive third update (COMPLETED)
+        msg3 = websocket.receive_json()
+        assert msg3["payload"]["status"] == "COMPLETED"
+        
+        # Auto-closes after COMPLETED state, so next call raises WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_json()
+
+def test_ws_disconnect_cleanup(client, mock_db):
+    analysis_id = str(uuid.uuid4())
+    # 1 state check for validation, plus states for loop
+    states = [
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 25.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 25.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "COMPLETED",
+            "progress_percentage": 100.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        }
+    ]
+    mock_db.get_analysis_state.side_effect = states
+    
+    with client.websocket_connect(f"/api/v1/events/ws?analysis_id={analysis_id}") as websocket:
+        msg = websocket.receive_json()
+        assert msg["payload"]["status"] == "PROCESSING"
+        # Close connection immediately (simulates client disconnect)
+        websocket.close()
+
+
 
 
 

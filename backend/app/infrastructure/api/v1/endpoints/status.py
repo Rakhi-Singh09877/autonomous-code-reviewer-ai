@@ -3,7 +3,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response as FastAPIResponse, StreamingResponse
 
 from app.core.config import settings
@@ -236,4 +236,97 @@ async def sse_events(
             "X-Accel-Buffering": "no",
         }
     )
+
+@router.websocket("/events/ws")
+async def websocket_events(
+    websocket: WebSocket,
+    analysis_id: str = None,
+    db_port: DBPort = Depends(get_db_port)
+):
+    """
+    WebSocket endpoint streaming real-time analysis status updates.
+    """
+    await websocket.accept()
+
+    if not analysis_id or not analysis_id.strip():
+        await websocket.close(code=1008, reason="analysis_id query parameter is required.")
+        return
+
+    try:
+        uuid.UUID(analysis_id)
+    except ValueError:
+        await websocket.close(code=1008, reason="Invalid analysis_id. Must be a valid UUID.")
+        return
+
+    state = await db_port.get_analysis_state(analysis_id)
+    if not state:
+        await websocket.close(code=1008, reason="Analysis job not found.")
+        return
+
+    # Listen for client disconnect in a non-blocking way
+    disconnect_future = asyncio.create_task(websocket.receive_text())
+
+    try:
+        last_status = None
+        last_progress = None
+        last_current_file = None
+
+        while not disconnect_future.done():
+            current_state = await db_port.get_analysis_state(analysis_id)
+            if not current_state:
+                break
+
+            status = current_state["status"]
+            progress = current_state["progress_percentage"]
+            current_file = current_state["current_file"]
+
+            if status != last_status or progress != last_progress or current_file != last_current_file:
+                payload = {
+                    "analysis_id": current_state["analysis_id"],
+                    "status": status,
+                    "progress_percentage": progress,
+                    "current_file": current_file,
+                    "total_files": current_state.get("total_files", 0),
+                    "errors": current_state["errors"]
+                }
+                event_data = {
+                    "type": "ANALYSIS_PROGRESS",
+                    "channel": f"analysis:{analysis_id}",
+                    "payload": payload,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                await websocket.send_json(event_data)
+
+                last_status = status
+                last_progress = progress
+                last_current_file = current_file
+
+            if status in ("COMPLETED", "FAILED", "CANCELLED"):
+                break
+
+            try:
+                await asyncio.wait_for(asyncio.shield(disconnect_future), timeout=0.5)
+                # If receive completes without timing out, the connection has closed or message received (disconnect)
+                break
+            except asyncio.TimeoutError:
+                pass
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket client disconnected for analysis_id: %s", analysis_id)
+    except Exception as e:
+        logger.error("WebSocket stream error for analysis_id %s: %s", analysis_id, e)
+    finally:
+        if not disconnect_future.done():
+            disconnect_future.cancel()
+            try:
+                await disconnect_future
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
 
