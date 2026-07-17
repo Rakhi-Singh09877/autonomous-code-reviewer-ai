@@ -1,6 +1,10 @@
 import logging
+import asyncio
+import json
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.responses import Response as FastAPIResponse
+from fastapi.responses import Response as FastAPIResponse, StreamingResponse
 
 from app.core.config import settings
 from app.use_cases.interfaces.db_port import DBPort
@@ -147,3 +151,89 @@ def get_metrics(metrics_port: MetricsPort = Depends(get_metrics_port)):
         content=metrics_content,
         media_type="text/plain; version=0.0.4"
     )
+
+@router.get("/events/sse")
+async def sse_events(
+    analysis_id: str,
+    db_port: DBPort = Depends(get_db_port)
+):
+    """
+    Server-Sent Events (SSE) endpoint streaming real-time analysis status updates.
+    """
+    if not analysis_id or not analysis_id.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="analysis_id query parameter is required."
+        )
+
+    try:
+        uuid.UUID(analysis_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid analysis_id. Must be a valid UUID."
+        )
+
+    state = await db_port.get_analysis_state(analysis_id)
+    if not state:
+        raise HTTPException(
+            status_code=404,
+            detail="Analysis job not found."
+        )
+
+    async def event_generator():
+        try:
+            last_status = None
+            last_progress = None
+            last_current_file = None
+
+            while True:
+                current_state = await db_port.get_analysis_state(analysis_id)
+                if not current_state:
+                    break
+
+                status = current_state["status"]
+                progress = current_state["progress_percentage"]
+                current_file = current_state["current_file"]
+
+                # Send update if state has changed since last iteration
+                if status != last_status or progress != last_progress or current_file != last_current_file:
+                    payload = {
+                        "analysis_id": current_state["analysis_id"],
+                        "status": status,
+                        "progress_percentage": progress,
+                        "current_file": current_file,
+                        "total_files": current_state.get("total_files", 0),
+                        "errors": current_state["errors"]
+                    }
+                    event_data = {
+                        "type": "ANALYSIS_PROGRESS",
+                        "channel": f"analysis:{analysis_id}",
+                        "payload": payload,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                    yield f"data: {json.dumps(event_data)}\n\n"
+
+                    last_status = status
+                    last_progress = progress
+                    last_current_file = current_file
+
+                if status in ("COMPLETED", "FAILED", "CANCELLED"):
+                    break
+
+                await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            logger.info("SSE client disconnected for analysis_id: %s", analysis_id)
+        except Exception as e:
+            logger.error("SSE stream error for analysis_id %s: %s", analysis_id, e)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+

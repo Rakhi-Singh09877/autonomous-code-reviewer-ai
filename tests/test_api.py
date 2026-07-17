@@ -3,6 +3,7 @@ import uuid
 import pytest
 import zipfile
 import sys
+import json
 from pathlib import Path
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock
@@ -221,3 +222,124 @@ def test_health_check_unhealthy(client, mock_db):
     data = response.json()
     assert data["status"] == "unhealthy"
     assert data["details"]["database"] == "unhealthy"
+
+def test_sse_invalid_uuid(client):
+    response = client.get("/api/v1/events/sse?analysis_id=invalid-uuid")
+    assert response.status_code == 400
+    assert "Must be a valid UUID" in response.json()["detail"]
+
+def test_sse_unknown_analysis(client, mock_db):
+    mock_db.get_analysis_state.return_value = None
+    unknown_id = str(uuid.uuid4())
+    response = client.get(f"/api/v1/events/sse?analysis_id={unknown_id}")
+    assert response.status_code == 404
+    assert "Analysis job not found" in response.json()["detail"]
+
+def test_sse_active_streaming_and_terminal_completion(client, mock_db):
+    analysis_id = str(uuid.uuid4())
+    # Mock status transition: PENDING -> COMPLETED
+    # Need 4 states: 1 for route validation check, 3 for active generator loop
+    states = [
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PENDING",
+            "progress_percentage": 0.0,
+            "current_file": None,
+            "total_files": 0,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PENDING",
+            "progress_percentage": 0.0,
+            "current_file": None,
+            "total_files": 0,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 50.0,
+            "current_file": "main.py",
+            "total_files": 2,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "COMPLETED",
+            "progress_percentage": 100.0,
+            "current_file": "done.py",
+            "total_files": 2,
+            "errors": []
+        }
+    ]
+    
+    mock_db.get_analysis_state.side_effect = states
+    
+    response = client.get(f"/api/v1/events/sse?analysis_id={analysis_id}")
+    assert response.status_code == 200
+    assert "text/event-stream" in (response.headers.get("content-type") or "")
+    
+    events = []
+    for line in response.iter_lines():
+        if line.startswith("data: "):
+            data_str = line[len("data: "):]
+            events.append(json.loads(data_str))
+            
+    assert len(events) == 3
+    assert events[0]["payload"]["status"] == "PENDING"
+    assert events[1]["payload"]["status"] == "PROCESSING"
+    assert events[1]["payload"]["progress_percentage"] == 50.0
+    assert events[2]["payload"]["status"] == "COMPLETED"
+
+def test_sse_disconnect_cleanup(client, mock_db):
+    analysis_id = str(uuid.uuid4())
+    # Return 3 states: 1 for validation check, 2 for generator loop
+    states = [
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 25.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "PROCESSING",
+            "progress_percentage": 25.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        },
+        {
+            "analysis_id": analysis_id,
+            "repository_id": str(uuid.uuid4()),
+            "status": "COMPLETED",
+            "progress_percentage": 100.0,
+            "current_file": "foo.py",
+            "total_files": 10,
+            "errors": []
+        }
+    ]
+    mock_db.get_analysis_state.side_effect = states
+    
+    # Read only the first event and close the connection
+    response = client.get(f"/api/v1/events/sse?analysis_id={analysis_id}")
+    assert response.status_code == 200
+    assert "text/event-stream" in (response.headers.get("content-type") or "")
+    # Read first event line
+    lines = response.iter_lines()
+    first_line = next(lines)
+    assert first_line.startswith("data: ")
+    # Close connection (simulates disconnect)
+    response.close()
+
+
+
