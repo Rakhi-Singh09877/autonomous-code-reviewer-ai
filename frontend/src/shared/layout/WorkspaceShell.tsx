@@ -140,7 +140,7 @@ export function WorkspaceShell({ children }: WorkspaceShellProps) {
             <div className="px-3">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="w-full text-left py-2 text-xs text-zinc-500 hover:text-zinc-300 hidden md:block"
+                className="w-full text-left py-2 text-xs text-zinc-400 hover:text-zinc-300 hidden md:block"
               >
                 {sidebarOpen ? "◀ Collapse Sidebar" : "▶"}
               </button>

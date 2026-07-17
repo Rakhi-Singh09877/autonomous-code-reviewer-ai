@@ -60,6 +60,20 @@ services:
     volumes:
       - chroma_data:/chroma/data
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: reviewer_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://backend:8000/api/v1
+      - NEXT_PUBLIC_BFF_URL=http://localhost:3000/api
+
 volumes:
   backend_storage:
   chroma_data:

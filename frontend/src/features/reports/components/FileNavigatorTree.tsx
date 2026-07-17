@@ -118,8 +118,9 @@ function FolderRow({ node, isExpanded, onToggle }: FolderRowProps) {
       style={{ paddingLeft: node.depth * 16 + 8 }}
       className="flex items-center gap-1.5 h-7 cursor-pointer select-none text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 px-2 rounded transition-colors"
       onClick={() => onToggle(node.folderKey)}
-      role="button"
+      role="treeitem"
       aria-expanded={isExpanded}
+      aria-selected={false}
       id={`tree-folder-${node.id.replace(/[:/]/g, "-")}`}
     >
       {isExpanded ? (
@@ -153,7 +154,8 @@ function FileRow({ node, isActive, onSelect }: FileRowProps) {
           : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
       }`}
       onClick={() => node.filePath && onSelect(node.filePath)}
-      role="button"
+      role="treeitem"
+      aria-selected={isActive}
       id={`tree-file-${node.id.replace(/[:/]/g, "-")}`}
     >
       <FileCode className="w-3.5 h-3.5 shrink-0 text-blue-400" />

@@ -201,29 +201,35 @@ export default function ReportWorkspacePage() {
         {tabs.length > 0 && (
           <div
             className="flex items-center border-b border-border bg-muted/30 overflow-x-auto shrink-0"
-            role="tablist"
-            aria-label="Open editor tabs"
           >
             {tabs.map((tab) => (
               <div
                 key={tab.filePath}
-                role="tab"
-                aria-selected={tab.filePath === activeFilePath}
-                id={`editor-tab-${tab.filePath.replace(/[/\.]/g, "-")}`}
-                className={`flex items-center gap-2 px-3 py-1.5 text-xs border-r border-border cursor-pointer shrink-0 transition-colors ${
+                className={`flex items-center border-r border-border shrink-0 transition-colors ${
                   tab.filePath === activeFilePath
-                    ? "bg-background text-foreground font-medium border-b-2 border-b-primary"
+                    ? "bg-background text-foreground border-b-2 border-b-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 }`}
-                onClick={() => setActiveTab(tab.filePath)}
               >
-                <span>{tab.label}</span>
+                <div role="tablist" aria-label="Tab" className="flex">
+                  <button
+                    role="tab"
+                    aria-selected={tab.filePath === activeFilePath}
+                    id={`editor-tab-${tab.filePath.replace(/[/\.]/g, "-")}`}
+                    className={`pl-3 pr-1.5 py-1.5 text-xs cursor-pointer select-none font-sans focus-visible:ring-1 focus-visible:ring-primary focus-visible:outline-none ${
+                      tab.filePath === activeFilePath ? "font-semibold text-foreground" : ""
+                    }`}
+                    onClick={() => setActiveTab(tab.filePath)}
+                  >
+                    {tab.label}
+                  </button>
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(tab.filePath);
                   }}
-                  className="text-muted-foreground/50 hover:text-foreground rounded transition-colors"
+                  className="pl-1.5 pr-3 py-1.5 text-xs text-muted-foreground/50 hover:text-foreground rounded transition-colors focus-visible:ring-1 focus-visible:ring-primary focus-visible:outline-none"
                   aria-label={`Close ${tab.label}`}
                   id={`close-tab-${tab.filePath.replace(/[/\.]/g, "-")}`}
                 >
