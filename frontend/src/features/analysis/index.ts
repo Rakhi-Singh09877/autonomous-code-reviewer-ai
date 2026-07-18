@@ -1,4 +1,5 @@
 // Analysis Feature module.
-// Contains live status hooks and console widgets.
+// Contains live status hooks, console widgets, and the upload wizard.
 
-export const analysisFeatureStatus = "scaffolded";
+export * from "./components/UploadWizard";
+export const analysisFeatureStatus = "implemented";
