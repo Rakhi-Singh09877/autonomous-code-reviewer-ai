@@ -6,10 +6,16 @@ redis>=5.0.3
 sqlalchemy>=2.0.28
 psycopg2-binary>=2.9.9
 httpx>=0.27.0
-anthropic>=0.21.0
+
+# Groq LLM via OpenAI-compatible SDK (replaces anthropic)
+openai>=1.30.0
+
+# Local embedding via Sentence Transformers (zero-cost, no paid API)
+sentence-transformers>=3.0.0
+torch>=2.0.0
+
 langchain>=0.1.13
 langchain-community>=0.0.29
-langchain-anthropic>=0.1.4
 chromadb>=0.4.24
 mcp>=1.0.0
 python-multipart>=0.0.9
@@ -18,3 +24,4 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 gitpython>=3.1.41
 prometheus-client>=0.20.0
+tenacity>=8.0.0

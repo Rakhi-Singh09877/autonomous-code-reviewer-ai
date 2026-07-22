@@ -16,12 +16,12 @@ from app.use_cases.interfaces.report_port import ReportPort
 
 # Import Adapters
 from app.infrastructure.database.repository import SQLAlchemyDBAdapter
-from app.infrastructure.llm.claude import ClaudeLLMAdapter
+from app.infrastructure.llm.groq import GroqLLMAdapter
 from app.infrastructure.registry import services_registry
 from app.infrastructure.repository_loader.git_loader import GitLoader
 from app.infrastructure.language_detector.detector import DefaultLanguageDetector
 from app.infrastructure.code_parser.parser import DefaultCodeParser
-from app.infrastructure.rag.embedding_provider import OpenAIEmbeddingProvider
+from app.infrastructure.rag.sentence_transformer_provider import SentenceTransformerEmbeddingProvider
 from app.infrastructure.rag.chroma_store import ChromaVectorStore
 from app.infrastructure.rag.rag_engine import RAGEngine
 from app.infrastructure.agents.review_agent import ReviewAgent
@@ -49,10 +49,14 @@ class ServiceFactory:
     @classmethod
     def get_llm_port(cls) -> LLMPort:
         """
-        Returns singleton Claude LLM port adapter.
+        Returns singleton Groq LLM port adapter.
+
+        Uses the OpenAI-compatible Groq endpoint
+        (model: ``openai/gpt-oss-120b``) configured via
+        ``GROQ_API_KEY``.
         """
         if cls._llm_adapter is None:
-            cls._llm_adapter = ClaudeLLMAdapter()
+            cls._llm_adapter = GroqLLMAdapter()
         return cls._llm_adapter
 
     @classmethod
@@ -76,17 +80,25 @@ class ServiceFactory:
 
     @classmethod
     def get_embedding_port(cls) -> EmbeddingPort:
-        provider = OpenAIEmbeddingProvider(
-            api_key=settings.OPENAI_API_KEY,
-            dimensions=settings.EMBEDDING_DIMENSIONS
+        """
+        Returns a ChromaVectorStore backed by the local
+        SentenceTransformer embedding provider (no paid API).
+        """
+        provider = SentenceTransformerEmbeddingProvider(
+            model_name=settings.LOCAL_EMBEDDING_MODEL,
+            dimensions=settings.EMBEDDING_DIMENSIONS,
         )
         return ChromaVectorStore(embedding_provider=provider)
 
     @classmethod
     def get_rag_port(cls) -> RAGPort:
-        provider = OpenAIEmbeddingProvider(
-            api_key=settings.OPENAI_API_KEY,
-            dimensions=settings.EMBEDDING_DIMENSIONS
+        """
+        Returns a RAGEngine wired to the local embedding provider
+        and ChromaDB vector store.
+        """
+        provider = SentenceTransformerEmbeddingProvider(
+            model_name=settings.LOCAL_EMBEDDING_MODEL,
+            dimensions=settings.EMBEDDING_DIMENSIONS,
         )
         store = cls.get_embedding_port()
         return RAGEngine(vector_store=store, embedding_provider=provider)

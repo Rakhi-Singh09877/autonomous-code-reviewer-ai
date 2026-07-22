@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging import setup_logging, logger
+from app.core.factory import ServiceFactory
 from app.infrastructure.api.dependencies import get_db_port, get_llm_port, get_rag_port
 from app.infrastructure.api.middleware.request_id import RequestIDMiddleware
 from app.infrastructure.api.middleware.security import SecurityHeadersMiddleware
@@ -43,7 +44,7 @@ async def lifespan(app: FastAPI):
         if "pytest" not in sys.modules and settings.APP_ENV != "test":
             raise RuntimeError(f"Database startup error: {e}") from e
 
-    # 4, 5 & 6. Initialize Chroma, Claude, and execute health checks
+    # 4, 5 & 6. Initialize Chroma, Groq LLM, and execute health checks
     if "pytest" not in sys.modules and settings.APP_ENV != "test":
         logger.info("Executing startup health checks...")
         
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
 
         # Verify Chroma vector store connection
         try:
-            rag_port = get_rag_port()
+            rag_port = ServiceFactory.get_rag_port()
             rag_ok = await rag_port.check_health()
             if not rag_ok:
                 logger.error("Startup ChromaDB health check failed.")
@@ -64,16 +65,16 @@ async def lifespan(app: FastAPI):
             logger.error(f"ChromaDB connection initialization error: {e}")
             raise RuntimeError(f"ChromaDB startup error: {e}") from e
 
-        # Verify Claude LLM connection
+        # Verify Groq LLM connection (via OpenAI-compatible endpoint)
         try:
-            llm_port = get_llm_port()
+            llm_port = ServiceFactory.get_llm_port()
             llm_ok = await llm_port.check_health()
             if not llm_ok:
-                logger.error("Startup Claude LLM health check failed.")
-                raise RuntimeError("Claude LLM health check failed during lifespan startup.")
+                logger.error("Startup Groq LLM health check failed.")
+                raise RuntimeError("Groq LLM health check failed during lifespan startup.")
         except Exception as e:
-            logger.error(f"Claude LLM connection initialization error: {e}")
-            raise RuntimeError(f"Claude LLM startup error: {e}") from e
+            logger.error(f"Groq LLM connection initialization error: {e}")
+            raise RuntimeError(f"Groq LLM startup error: {e}") from e
 
         logger.info("All startup health checks passed.")
     else:
